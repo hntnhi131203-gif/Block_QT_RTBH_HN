@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Allsite HCM - DDoS Protection Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 10px;
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #3b82f6, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header p {
+            color: #94a3b8;
+            font-size: 0.9em;
+        }
+        
+        .timestamp {
+            color: #4ade80;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-top: 10px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 1024px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .card {
+            background: rgba(30, 41, 59, 0.9);
+            border: 2px solid #475569;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+            transform: translateY(-2px);
+        }
+        
+        .card-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #3b82f6;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .icon {
+            font-size: 1.5em;
+        }
+        
+        /* Queue Card */
+        .queue-info {
+            padding: 20px;
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 4px solid #3b82f6;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .queue-number {
+            font-size: 3em;
+            font-weight: bold;
+            color: #3b82f6;
+            text-align: center;
+            margin: 15px 0;
+        }
+        
+        .queue-status {
+            text-align: center;
+            color: #cbd5e1;
+            font-size: 0.95em;
+        }
+        
+        /* Batch Card */
+        .batch-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .batch-ip {
+            background: rgba(34, 197, 94, 0.1);
+            border-left: 3px solid #22c55e;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            border-radius: 3px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .batch-age {
+            background: rgba(59, 130, 246, 0.3);
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            color: #60a5fa;
+        }
+        
+        .batch-empty {
+            text-align: center;
+            color: #64748b;
+            padding: 30px 0;
+            font-style: italic;
+        }
+        
+        /* Switch Cards */
+        .switches-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+        
+        .switch-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            background: rgba(51, 65, 85, 0.8);
+            border-radius: 8px;
+            border: 2px solid #475569;
+            transition: all 0.3s ease;
+        }
+        
+        .switch-item.idle {
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.1);
+        }
+        
+        .switch-item.configuring {
+            border-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.1);
+            animation: pulse 1.5s infinite;
+        }
+        
+        .switch-item.error {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.8;
+            }
+        }
+        
+        .switch-name {
+            font-weight: bold;
+            font-size: 1.1em;
+            min-width: 100px;
+        }
+        
+        .switch-status {
+            flex: 1;
+            text-align: right;
+            margin-right: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .status-badge.idle {
+            background: #22c55e;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+        }
+        
+        .status-badge.configuring {
+            background: #f59e0b;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+            animation: blink 0.8s infinite;
+        }
+        
+        .status-badge.error {
+            background: #ef4444;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            animation: blink 0.5s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 15px;
+            color: #64748b;
+            font-size: 0.85em;
+            margin-top: 30px;
+        }
+        
+        .refresh-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+            margin-left: 10px;
+            animation: blink 1s infinite;
+        }
+        
+        .error-banner {
+            background: rgba(239, 68, 68, 0.1);
+            border: 2px solid #ef4444;
+            color: #fca5a5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .error-banner.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ DDoS Protection Monitor</h1>
+            <p>Allsite HCM Real-time Service Status</p>
+            <div class="timestamp">
+                <span id="time">--:--:--</span>
+                <span class="refresh-indicator"></span>
+            </div>
+        </div>
+        
+        <div class="error-banner" id="errorBanner">
+            ⚠️ <span id="errorMsg"></span>
+        </div>
+        
+        <div class="grid">
+            <!-- Queue Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">📬</span> Hàng Chờ
+                </div>
+                <div class="queue-info">
+                    <div class="queue-number" id="queueSize">-</div>
+                    <div class="queue-status" id="queueStatus">Đang tải...</div>
+                </div>
+            </div>
+            
+            <!-- Batch Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">⚙️</span> Batch Hiện Tại
+                </div>
+                <div class="batch-list" id="batchList">
+                    <div class="batch-empty">Đang tải...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Switch Status Full Width -->
+        <div class="card">
+            <div class="card-title">
+                <span class="icon">🔌</span> Trạng Thái Switch Core
+            </div>
+            <div class="switches-grid" id="switchesGrid">
+                <div style="text-align: center; color: #94a3b8;">Đang tải...</div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <span>Tự động cập nhật mỗi 1 giây</span>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = '/status';
+        const REFRESH_INTERVAL = 1000; // 1 second
+        
+        async function fetchStatus() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                updateUI(data);
+                hideError();
+            } catch (error) {
+                console.error('Error fetching status:', error);
+                showError(`Không thể kết nối: ${error.message}`);
+            }
+        }
+        
+        function updateUI(data) {
+            updateTime(data.timestamp);
+            updateQueue(data.queue);
+            updateBatch(data.current_batch);
+            updateSwitches(data.switches);
+        }
+        
+        function updateTime(timestamp) {
+            document.getElementById('time').textContent = timestamp;
+        }
+        
+        function updateQueue(queue) {
+            document.getElementById('queueSize').textContent = queue.size;
+            document.getElementById('queueStatus').textContent = queue.status;
+        }
+        
+        function updateBatch(batch) {
+            const batchList = document.getElementById('batchList');
+            const count = batch.count;
+            const ips = batch.ips || [];
+            const age = batch.age_seconds;
+            
+            if (count === 0) {
+                batchList.innerHTML = '<div class="batch-empty">Không có IP đang xử lý</div>';
+                return;
+            }
+            
+            let html = '';
+            ips.forEach(ip => {
+                html += `
+                    <div class="batch-ip">
+                        <span>${ip}</span>
+                        <span class="batch-age">${age}s</span>
+                    </div>
+                `;
+            });
+            
+            batchList.innerHTML = html;
+        }
+        
+        function updateSwitches(switches) {
+            const grid = document.getElementById('switchesGrid');
+            let html = '';
+            
+            for (const [name, status] of Object.entries(switches)) {
+                const statusClass = getStatusClass(status);
+                const statusText = formatStatus(status);
+                const badge = '<span class="status-badge ' + statusClass + '"></span>';
+                
+                html += `
+                    <div class="switch-item ${statusClass}">
+                        <div class="switch-name">${badge}${name}</div>
+                        <div class="switch-status">${statusText}</div>
+                    </div>
+                `;
+            }
+            
+            grid.innerHTML = html;
+        }
+        
+        function getStatusClass(status) {
+            if (status === 'idle') return 'idle';
+            if (status.includes('configuring')) return 'configuring';
+            if (status.includes('error')) return 'error';
+            return 'idle';
+        }
+        
+        function formatStatus(status) {
+            if (status === 'idle') return '✓ Rảnh rỗi';
+            if (status.includes('configuring')) {
+                const match = status.match(/(\d+)/);
+                const count = match ? match[1] : '?';
+                return `↻ Đang cấu hình (${count} lệnh)`;
+            }
+            if (status.includes('error')) {
+                return '✗ ' + status;
+            }
+            return status;
+        }
+        
+        function showError(message) {
+            const banner = document.getElementById('errorBanner');
+            document.getElementById('errorMsg').textContent = message;
+            banner.classList.add('show');
+        }
+        
+        function hideError() {
+            document.getElementById('errorBanner').classList.remove('show');
+        }
+        
+        // Initial load and auto-refresh
+        fetchStatus();
+        setInterval(fetchStatus, REFRESH_INTERVAL);
+    </script>
+</body>
+</html>
