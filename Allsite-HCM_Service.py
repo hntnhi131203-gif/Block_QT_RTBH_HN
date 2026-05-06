@@ -3,12 +3,19 @@ import time
 import threading
 import concurrent.futures
 import os
+import logging
 from queue import Queue, Empty
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, send_from_directory
 from netmiko import ConnectHandler
 
-# --- CẤU HÌNH THIẾT BỊ & DẢI IP (Giữ nguyên của bạn) ---
+# Cấu hình logging
+logging.basicConfig(
+    filename='allsite-hcm.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 DEVICES = {
     'QFXG8': {"device_type": "juniper", "ip": "10.8.8.38", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50},
     'EXDC4': {"device_type": "juniper", "ip": "10.2.8.1", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50},
@@ -72,6 +79,7 @@ def apply_config(device_name, commands):
     except Exception as e:
         with status_lock:
             switch_status[device_name] = f'error: {str(e)[:50]}'
+        logging.error(f"Failed to apply config on {device_name}: {str(e)}")
         print(f"[{device_name}] Lỗi: {str(e)}")
 
 # --- WORKER: GOM LÔ & ĐA LUỒNG ---
@@ -127,6 +135,10 @@ def process_queue_batch():
                 # Chờ tất cả Switch commit xong mới lặp lại (Khóa tự nhiên)
                 concurrent.futures.wait(futures)
             
+            # Ghi log cho từng IP đã xử lý thành công
+            for item in batch:
+                logging.info(f"Successfully processed {item['action']} for IP: {item['ip']}")
+            
             # Xóa batch hiện tại
             with status_lock:
                 current_batch_ips = []
@@ -141,7 +153,10 @@ def process_queue_batch():
 @app.route('/fastnetmon_hook', methods=['POST'])
 def handle_fastnetmon():
     data = request.json
-    ip_queue.put({'ip': data.get('ip'), 'action': data.get('action')})
+    ip = data.get('ip')
+    action = data.get('action')
+    logging.info(f"Received {action} request for IP: {ip}")
+    ip_queue.put({'ip': ip, 'action': action})
     return {"status": "queued"}, 200
 
 # --- API KIỂM TRA TRẠNG THÁI ---
@@ -176,6 +191,34 @@ def dashboard():
             return f.read()
     except FileNotFoundError:
         return "<h1>Dashboard không tìm thấy</h1><p>Vui lòng đặt dashboard.html cùng thư mục với service</p>", 404
+
+# --- LOG VIEWER ---
+@app.route('/logs')
+def logs():
+    log_path = os.path.join(os.path.dirname(__file__), 'allsite-hcm.log')
+    try:
+        with open(log_path, 'r', encoding='utf-8') as f:
+            log_content = f.read()
+        return f"""
+        <html>
+        <head>
+            <title>Allsite HCM - Logs</title>
+            <style>
+                body {{ font-family: monospace; background: #0f172a; color: #e2e8f0; padding: 20px; }}
+                pre {{ white-space: pre-wrap; background: #1e293b; padding: 20px; border-radius: 8px; }}
+                h1 {{ color: #3b82f6; }}
+                a {{ color: #06b6d4; text-decoration: none; }}
+            </style>
+        </head>
+        <body>
+            <h1>🛡️ Allsite HCM - Activity Logs</h1>
+            <p><a href="/">← Quay lại Dashboard</a></p>
+            <pre>{log_content}</pre>
+        </body>
+        </html>
+        """
+    except FileNotFoundError:
+        return "<h1>Log file không tìm thấy</h1><p>Chưa có log nào được ghi.</p>", 404
 
 if __name__ == '__main__':
     # Bật Worker chạy ngầm trước khi chạy Server
