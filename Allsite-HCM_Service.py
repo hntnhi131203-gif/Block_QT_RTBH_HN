@@ -4,6 +4,7 @@ import threading
 import concurrent.futures
 import os
 from queue import Queue, Empty
+from datetime import datetime, timezone, timedelta
 from flask import Flask, request, send_from_directory
 from netmiko import ConnectHandler
 
@@ -153,7 +154,7 @@ def get_status():
         sw_status = switch_status.copy()
     
     return {
-        "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+        "timestamp": datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%d %H:%M:%S'),
         "queue": {
             "size": queue_size,
             "status": f"{queue_size} IP đang chờ"
@@ -179,4 +180,4 @@ def dashboard():
 if __name__ == '__main__':
     # Bật Worker chạy ngầm trước khi chạy Server
     threading.Thread(target=process_queue_batch, daemon=True).start()
-    app.run(host='127.0.0.1', port=5000)
+    app.run(host='0.0.0.0', port=5000)
