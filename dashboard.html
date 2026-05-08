@@ -304,6 +304,123 @@
         .error-banner.show {
             display: block;
         }
+        
+        /* Action Form */
+        .action-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .form-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .form-group input[type="text"] {
+            flex: 1;
+            min-width: 250px;
+            padding: 12px 15px;
+            background: rgba(51, 65, 85, 0.8);
+            border: 2px solid #475569;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+        }
+        
+        .form-group input[type="text"]:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background: rgba(51, 65, 85, 0.95);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-ban {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .btn-ban:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+        
+        .btn-unban {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .btn-unban:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn-clear {
+            background: rgba(100, 116, 139, 0.8);
+            color: white;
+        }
+        
+        .btn-clear:hover {
+            background: rgba(100, 116, 139, 1);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .success-message {
+            background: rgba(16, 185, 129, 0.1);
+            border: 2px solid #10b981;
+            color: #86efac;
+            padding: 12px 15px;
+            border-radius: 6px;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .success-message.show {
+            display: block;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
     </style>
 </head>
 <body>
@@ -316,7 +433,8 @@
                     <span id="time">--:--:--</span>
                     <span class="refresh-indicator"></span>
                 </div>
-                <a href="/logs" class="log-button">📋 Xem Logs</a>
+                <a href="/ban-history" class="log-button">📊 Ban History</a>
+                <a href="/logs-detail" class="log-button">📋 Logs</a>
             </div>
         </div>
         
@@ -355,6 +473,34 @@
             <div class="switches-grid" id="switchesGrid">
                 <div style="text-align: center; color: #94a3b8;">Đang tải...</div>
             </div>
+        </div>
+        
+        <!-- Action Form Card -->
+        <div class="card">
+            <div class="card-title">
+                <span class="icon">⚡</span> Thao Tác Ban/Unban
+            </div>
+            <div class="action-form">
+                <div id="successMessage" class="success-message"></div>
+                <div class="form-group">
+                    <input 
+                        type="text" 
+                        id="ipInput" 
+                        placeholder="Nhập IP (VD: 103.2.224.193)"
+                        autocomplete="off"
+                    >
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-ban" onclick="sendAction('ban')">🚫 Ban IP</button>
+                    <button class="btn btn-unban" onclick="sendAction('unban')">✅ Unban IP</button>
+                    <button class="btn btn-clear" onclick="clearForm()">🔄 Xóa</button>
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 30px; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+            <a href="/ban-history" class="log-button">📊 Ban/Unban History</a>
+            <a href="/logs-detail" class="log-button">📋 Chi Tiết Logs</a>
         </div>
         
         <div class="footer">
@@ -469,6 +615,73 @@
         
         function hideError() {
             document.getElementById('errorBanner').classList.remove('show');
+        }
+        
+        async function sendAction(action) {
+            const ip = document.getElementById('ipInput').value.trim();
+            
+            if (!ip) {
+                showError('Vui lòng nhập IP');
+                return;
+            }
+            
+            if (!isValidIP(ip)) {
+                showError('IP không hợp lệ');
+                return;
+            }
+            
+            const btn = event.target;
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Đang gửi...';
+            
+            try {
+                const response = await fetch('/fastnetmon_hook', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ip: ip,
+                        action: action
+                    })
+                });
+                
+                if (response.ok) {
+                    showSuccess(`✓ ${action === 'ban' ? 'Đã ban' : 'Đã unban'} IP ${ip}`);
+                    clearForm();
+                } else {
+                    showError(`Lỗi: ${response.status} ${response.statusText}`);
+                }
+            } catch (error) {
+                showError(`Không thể gửi: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+        
+        function isValidIP(ip) {
+            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (!ipRegex.test(ip)) return false;
+            
+            const parts = ip.split('.');
+            return parts.every(part => parseInt(part) <= 255);
+        }
+        
+        function clearForm() {
+            document.getElementById('ipInput').value = '';
+            document.getElementById('successMessage').classList.remove('show');
+            document.getElementById('ipInput').focus();
+        }
+        
+        function showSuccess(message) {
+            const successMsg = document.getElementById('successMessage');
+            successMsg.textContent = message;
+            successMsg.classList.add('show');
+            setTimeout(() => {
+                successMsg.classList.remove('show');
+            }, 3000);
         }
         
         // Initial load and auto-refresh
