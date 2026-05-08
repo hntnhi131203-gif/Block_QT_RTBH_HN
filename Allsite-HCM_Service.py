@@ -377,7 +377,10 @@ def logs_detail():
         logs = cursor.fetchall()
         conn.close()
     
-    logs_html = ''.join([f"<tr><td>{row['timestamp']}</td><td style='color: {"#ef4444" if row["level"] == "ERROR" else "#10b981"}'>{row['level']}</td><td>{row['message']}</td></tr>" for row in logs])
+    logs_html = ''
+    for row in logs:
+        color = '#ef4444' if row['level'] == 'ERROR' else '#10b981'
+        logs_html += f"<tr><td>{row['timestamp']}</td><td style=\"color: {color}\">{row['level']}</td><td>{row['message']}</td></tr>"
     
     return f"""
     <html>

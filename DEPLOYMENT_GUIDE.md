@@ -37,6 +37,15 @@ sudo journalctl -u allsite-hcm -f
 sudo systemctl restart allsite-hcm
 ```
 
+## 4.5. Truy cập Dashboard Web
+
+Service chạy Flask server trên port **5000**. Mở browser và truy cập:
+
+- **Dashboard chính**: `http://<server-ip>:5000/`
+- **Ban/Unban History**: `http://<server-ip>:5000/ban-history` 
+- **Detailed Logs**: `http://<server-ip>:5000/logs-detail`
+- **Status API**: `http://<server-ip>:5000/status` (JSON format)
+
 ## 5. Cấu hình FastNetMon để gọi script
 
 Trong cấu hình FastNetMon (thường tại `/etc/fastnetmon/fastnetmon.conf`), thêm hoặc sửa:
@@ -54,6 +63,8 @@ Hoặc nếu dùng format script cũ:
 
 ## 6. Thử nghiệm API trực tiếp
 
+### Cách 1: Từ Command Line
+
 ```bash
 # Test gửi request đến Service
 curl -X POST http://127.0.0.1:5000/fastnetmon_hook \
@@ -63,6 +74,13 @@ curl -X POST http://127.0.0.1:5000/fastnetmon_hook \
 # Hoặc dùng Python
 python3 -c "import requests; requests.post('http://127.0.0.1:5000/fastnetmon_hook', json={'ip': '45.119.80.5', 'action': 'ban'})"
 ```
+
+### Cách 2: Từ Web Dashboard
+
+1. Mở `http://<server-ip>:5000/`
+2. Trong mục **⚡ Thao Tác Ban/Unban** nhập IP
+3. Click **🚫 Ban IP** hoặc **✅ Unban IP**
+4. Xem kết quả ở **📊 Ban/Unban History**
 
 ## 7. Hiểu flow xử lý
 
@@ -82,6 +100,17 @@ python3 -c "import requests; requests.post('http://127.0.0.1:5000/fastnetmon_hoo
 
 ## 8. Troubleshooting
 
+**Lỗi: "SyntaxError: '[' was never closed" (dòng 380)**
+- Này là lỗi quote escape khi cập nhật mã
+- **Giải pháp**: Cập nhật file `Allsite-HCM_Service.py` từ repo mới nhất
+- Hoặc sửa dòng 380 bằng cách tách logic:
+```python
+logs_html = ''
+for row in logs:
+    color = '#ef4444' if row['level'] == 'ERROR' else '#10b981'
+    logs_html += f"<tr><td>{row['timestamp']}</td><td style=\"color: {color}\">{row['level']}</td><td>{row['message']}</td></tr>"
+```
+
 **Lỗi: "Configuration Database Locked"**
 - Đã giải quyết bằng batching + queue. Nếu vẫn lỗi, giảm `max_workers` từ 3 xuống 1 trong file Service.
 
@@ -95,6 +124,11 @@ python3 -c "import requests; requests.post('http://127.0.0.1:5000/fastnetmon_hoo
 
 **Port 5000 bị chiếm**
 - Thay `port=5000` thành port khác (ví dụ 5001) trong `Allsite-HCM_Service.py`
+
+**Dashboard không tải được**
+- Kiểm tra service running: `sudo systemctl status allsite-hcm`
+- Kiểm tra port: `sudo netstat -tlnp | grep 5000`
+- Kiểm tra firewall: `sudo ufw allow 5000/tcp`
 
 ## 9. Monitor Performance
 
