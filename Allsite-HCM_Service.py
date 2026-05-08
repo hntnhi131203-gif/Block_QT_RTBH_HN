@@ -10,13 +10,29 @@ from datetime import datetime, timezone, timedelta
 from flask import Flask, request, send_from_directory
 from netmiko import ConnectHandler
 
+# --- HỌC UTC +7 HELPER ---
+def get_vietnam_time():
+    """Lấy thời gian hiện tại theo múi giờ UTC +7 (Việt Nam)"""
+    utc_tz = timezone.utc
+    vn_tz = timezone(timedelta(hours=7))
+    return datetime.now(utc_tz).astimezone(vn_tz)
+
+class VietnamTimeFormatter(logging.Formatter):
+    """Custom formatter để logging dùng giờ Việt Nam (UTC +7)"""
+    converter = lambda *args: get_vietnam_time().timetuple()
+
 # Cấu hình logging
-logging.basicConfig(
-    filename='allsite-hcm.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+handler = logging.FileHandler('allsite-hcm.log', encoding='utf-8')
+formatter = VietnamTimeFormatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+handler.setFormatter(formatter)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+
+# Cấu hình stdout console logging (dev use)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 DEVICES = {
     'QFXG8': {"device_type": "juniper", "ip": "10.8.8.38", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50},
     'EXDC4': {"device_type": "juniper", "ip": "10.2.8.1", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50},
@@ -56,7 +72,7 @@ def init_database():
             CREATE TABLE IF NOT EXISTS banned_ips (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ip TEXT NOT NULL,
-                ban_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ban_time TEXT,
                 device TEXT,
                 status TEXT DEFAULT 'active'
             )
@@ -67,7 +83,7 @@ def init_database():
             CREATE TABLE IF NOT EXISTS unbanned_ips (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ip TEXT NOT NULL,
-                unban_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                unban_time TEXT,
                 device TEXT,
                 status TEXT DEFAULT 'success'
             )
@@ -77,7 +93,7 @@ def init_database():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS detailed_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                timestamp TEXT,
                 level TEXT,
                 message TEXT
             )
@@ -87,25 +103,27 @@ def init_database():
         conn.close()
 
 def log_ban_unban(ip, action, device=None):
-    """Ghi ban/unban vào database"""
+    """Ghi ban/unban vào database với thời gian UTC +7"""
     with db_lock:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
+        vn_time = get_vietnam_time().strftime('%Y-%m-%d %H:%M:%S')
         
         if action.lower() == 'ban':
-            cursor.execute('INSERT INTO banned_ips (ip, device) VALUES (?, ?)', (ip, device))
+            cursor.execute('INSERT INTO banned_ips (ip, ban_time, device) VALUES (?, ?, ?)', (ip, vn_time, device))
         elif action.lower() == 'unban':
-            cursor.execute('INSERT INTO unbanned_ips (ip, device) VALUES (?, ?)', (ip, device))
+            cursor.execute('INSERT INTO unbanned_ips (ip, unban_time, device) VALUES (?, ?, ?)', (ip, vn_time, device))
         
         conn.commit()
         conn.close()
 
 def log_detail(level, message):
-    """Ghi log chi tiết vào database"""
+    """Ghi log chi tiết vào database với thời gian UTC +7"""
     with db_lock:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute('INSERT INTO detailed_logs (level, message) VALUES (?, ?)', (level, message))
+        vn_time = get_vietnam_time().strftime('%Y-%m-%d %H:%M:%S')
+        cursor.execute('INSERT INTO detailed_logs (timestamp, level, message) VALUES (?, ?, ?)', (vn_time, level, message))
         conn.commit()
         conn.close()
 
@@ -139,11 +157,11 @@ def commit_device(device_name):
         with status_lock:
             switch_status[device_name] = 'idle'
         print(f"[{device_name}] Final commit thành công!")
-        logging.info(f"Final commit successful on {device_name}")
+        logger.info(f"Final commit successful on {device_name}")
     except Exception as e:
         with status_lock:
             switch_status[device_name] = f'error: {str(e)[:50]}'
-        logging.error(f"Failed to final commit on {device_name}: {str(e)}")
+        logger.error(f"Failed to final commit on {device_name}: {str(e)}")
         print(f"[{device_name}] Lỗi final commit: {str(e)}")
 
 def final_commit_all_devices():
@@ -286,7 +304,7 @@ def get_status():
         sw_status = switch_status.copy()
     
     return {
-        "timestamp": datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%d %H:%M:%S'),
+        "timestamp": get_vietnam_time().strftime('%Y-%m-%d %H:%M:%S'),
         "queue": {
             "size": queue_size,
             "status": f"{queue_size} IP đang chờ"
@@ -327,8 +345,8 @@ def ban_history():
         
         conn.close()
     
-    banned_html = ''.join([f"<tr><td>{row['ip']}</td><td>{row['ban_time']}</td><td>{row['device']}</td></tr>" for row in banned])
-    unbanned_html = ''.join([f"<tr><td>{row['ip']}</td><td>{row['unban_time']}</td><td>{row['device']}</td></tr>" for row in unbanned])
+    banned_html = ''.join([f"<tr><td>{row['ip']}</td><td>{row['ban_time']}</td><td>{row['device'] or 'N/A'}</td></tr>" for row in banned])
+    unbanned_html = ''.join([f"<tr><td>{row['ip']}</td><td>{row['unban_time']}</td><td>{row['device'] or 'N/A'}</td></tr>" for row in unbanned])
     
     return f"""
     <html>
