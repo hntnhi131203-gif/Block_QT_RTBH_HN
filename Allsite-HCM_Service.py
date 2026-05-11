@@ -36,17 +36,18 @@ logger.addHandler(console_handler)
 DEVICES = {
     'QFXG8': {"device_type": "juniper", "ip": "10.8.8.38", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50},
     'EXDC4': {"device_type": "juniper", "ip": "10.2.8.1", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50},
-    'QFXDC7': {"device_type": "juniper", "ip": "10.2.8.82", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50}
+    'QFXDC7': {"device_type": "juniper", "ip": "10.2.8.82", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50},
+    'QFXJ23': {"device_type": "juniper", "ip": "10.2.8.83", "username": "fastnetmon", "password": "M74NRb57k5vc6U", "read_timeout_override": 50}
 }
 
 IP_RANGES = {
-    ('45.119.80.0/22', '45.119.84.0/22'): ('10.10.20.2','172.31.255.19'),
-    ('103.27.236.0/22','103.87.220.0/22'): ('10.10.10.2','172.31.255.19'),
-    ('103.48.84.0/22', '103.48.192.0/22'): ('10.10.30.2','172.31.255.3'),
-    ('45.119.212.0/22', '42.96.16.0/22'): ('10.10.40.2','172.31.255.3'),
-    ('42.96.20.0/23',): ('10.10.31.2','172.17.11.3'),
-    ('103.2.228.0/22',): ('172.31.255.19','172.31.255.19'),
-    ('103.2.224.0/22',): ('10.10.33.2','10.10.33.2')
+    ('45.119.80.0/22', '45.119.84.0/22'): ('10.10.20.2','172.31.255.19','172.31.249.1'),
+    ('103.27.236.0/22','103.87.220.0/22'): ('10.10.10.2','172.31.255.19',''),
+    ('103.48.84.0/22', '103.48.192.0/22'): ('10.10.30.2','172.31.255.3',''),
+    ('45.119.212.0/22', '42.96.16.0/22'): ('10.10.40.2','172.31.255.3',''),
+    ('42.96.20.0/23',): ('10.10.31.2','172.17.11.3',''),
+    ('103.2.228.0/22',): ('172.31.255.19','172.31.255.19',''),
+    ('103.2.224.0/22',): ('10.10.33.2','10.10.33.2','')
 }
 
 app = Flask(__name__)
@@ -56,7 +57,7 @@ db_lock = threading.Lock()
 
 # --- TRACKING TRẠNG THÁI ---
 status_lock = threading.Lock()
-switch_status = {'QFXG8': 'idle', 'EXDC4': 'idle', 'QFXDC7': 'idle'}
+switch_status = {'QFXG8': 'idle', 'EXDC4': 'idle', 'QFXDC7': 'idle', 'QFXJ23': 'idle'}
 current_batch_ips = []
 batch_start_time = None
 
@@ -135,7 +136,7 @@ def check_ip_in_ranges(ip, ranges):
             return True
     return False
 
-def get_config_commands(ip, action, next_hop_fpt, next_hop_cmc):
+def get_config_commands(ip, action, next_hop_fpt, next_hop_cmc, next_hop_vt):
     DC = "BGP-CMC-01" if next_hop_cmc == "172.31.255.3" else "BGP-CMC-02"
     DC_FPT = "BGP-FPT3" if next_hop_fpt == "10.10.33.2" else "BGP-FPT"
     QT = "black-hole-QT2" if next_hop_fpt == "10.10.33.2" else "black-hole-QT"
@@ -145,7 +146,9 @@ def get_config_commands(ip, action, next_hop_fpt, next_hop_cmc):
             f"{cmd_type} policy-options policy-statement {QT} term 1 from route-filter {ip}/32 exact"]
     res2 = [f"{cmd_type} routing-instances {DC} routing-options static route {ip} next-hop {next_hop_cmc}",
             f"{cmd_type} policy-options policy-statement {QT} term 1 from route-filter {ip}/32 exact"]
-    return res1, res2
+    res3 = [f"{cmd_type} routing-instances BGP-VIETTEL routing-options static route {ip} next-hop {next_hop_vt}",
+            f"{cmd_type} policy-options policy-statement black-hole-ALL term 1 from route-filter {ip}/32 exact"]
+    return res1, res2, res3
 
 def commit_device(device_name):
     """Commit một thiết bị"""
@@ -218,12 +221,12 @@ def process_queue_batch():
                 current_batch_ips = [item['ip'] for item in batch]
                     
             print(f"\n--- Bắt đầu xử lý lô gồm {len(batch)} IP ---")
-            commands_to_send = {'QFXG8': [], 'EXDC4': [], 'QFXDC7': []}
+            commands_to_send = {'QFXG8': [], 'EXDC4': [], 'QFXDC7': [], 'QFXJ23': []}
             
             # 3. Phân loại lệnh vào Dictionary
             for item in batch:
                 client_ip, action = item['ip'], item['action']
-                for ranges, (next_hop_fpt, next_hop_cmc) in IP_RANGES.items():
+                for ranges, (next_hop_fpt, next_hop_cmc, next_hop_vt) in IP_RANGES.items():
                     if check_ip_in_ranges(client_ip, ranges):
                         sw1, sw2 = None, None
                         match next_hop_fpt:
@@ -232,10 +235,13 @@ def process_queue_batch():
                             case '10.10.31.2': sw1, sw2 = 'QFXDC7', 'QFXG8'
                             case '10.10.33.2': sw1, sw2 = 'QFXDC7', 'QFXDC7'
                         
-                        cfg1, cfg2 = get_config_commands(client_ip, action, next_hop_fpt, next_hop_cmc)
+                        cfg1, cfg2, cfg3 = get_config_commands(client_ip, action, next_hop_fpt, next_hop_cmc, next_hop_vt)
                         commands_to_send[sw1].extend(cfg1)
                         if next_hop_fpt != "10.10.33.2" and sw2:
                             commands_to_send[sw2].extend(cfg2)
+                            if next_hop_vt != '':   
+                            # Apply VT config to QFXJ23
+                                commands_to_send['QFXJ23'].extend(cfg3)
                         break
             
             # 4. Thực thi Đa luồng (Multithreading)
