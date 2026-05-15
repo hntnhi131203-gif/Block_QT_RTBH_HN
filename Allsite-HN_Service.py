@@ -226,7 +226,7 @@ def process_queue_batch():
                         sw2 = 'EXE1'
                         
                         cfg1, cfg2 = get_config_commands(client_ip, action, next_hop_fpt, next_hop_cmc)
-                        commands_to_send[sw2].extend(cfg2)
+                        commands_to_send[sw2].extend(cfg1)
                        #if next_hop_fpt != "10.10.22.2":
                        #if next_hop_fpt == "1.1.1.1": # Chỉ gửi lệnh cho EXE1 nếu next_hop_fpt là
                         #    commands_to_send[sw1].extend(cfg1)
