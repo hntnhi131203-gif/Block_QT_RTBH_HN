@@ -48,18 +48,27 @@ Service chạy Flask server trên port **5000**. Mở browser và truy cập:
 
 ## 5. Cấu hình FastNetMon để gọi script
 
+### **Cho HCM Region:**
 Trong cấu hình FastNetMon (thường tại `/etc/fastnetmon/fastnetmon.conf`), thêm hoặc sửa:
 
 ```
-notify_script_path = /opt/allsite-hcm/Allsite-HCM.py
+notify_script_path = /opt/RTBH-HCM/Allsite-HCM.py
 notify_script_format = json
 ```
 
-Hoặc nếu dùng format script cũ:
+### **Cho HN Region (Cách 2 - Khuyến cáo):**
+Cấu hình FastNetMon để gọi **Allsite-HN.py** thay vì Allsite-HCM.py:
 
-```bash
-/opt/allsite-hcm/Allsite-HCM.py <IP> <DIRECTION> <PPS> <BAN|UNBAN>
 ```
+notify_script_path = /opt/RTBH-HN/Allsite-HN.py
+notify_script_format = json
+```
+
+**Giải thích:**
+- FastNetMon gọi `Allsite-HN.py` (lightweight script)
+- Script này gửi request đến `Allsite-HN_Service.py` chạy trên port **5001**
+- Service xử lý batch queue cho devices **EXE1, EXV5** (HN region)
+- Điều này cho phép chạy cả HCM và HN services độc lập trên cùng 1 server
 
 ## 6. Thử nghiệm API trực tiếp
 
@@ -145,3 +154,87 @@ watch -n 1 'netstat -tlnp | grep 5000'
 ---
 
 **Ghi chú:** System sẽ tự restart nếu service gặp lỗi nhờ `Restart=always` trong systemd config.
+
+---
+
+## 10. Triển khai Allsite HN Region (Đa Region)
+
+Nếu bạn muốn chạy cả **HCM** và **HN** trên cùng server, làm theo:
+
+### 2a. Cấu trúc thư mục cho HN
+
+```bash
+sudo mkdir -p /opt/RTBH-HN
+sudo cp Allsite-HN_Service.py /opt/RTBH-HN/
+sudo cp Allsite-HN.py /opt/RTBH-HN/
+sudo chmod +x /opt/RTBH-HN/Allsite-HN_Service.py
+sudo chmod +x /opt/RTBH-HN/Allsite-HN.py
+```
+
+### 3a. Cấu hình Systemd Service cho HN
+
+```bash
+sudo cp allsite-hn.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable allsite-hn
+sudo systemctl start allsite-hn
+```
+
+### 4a. Kiểm tra HN Service
+
+```bash
+# Xem trạng thái
+sudo systemctl status allsite-hn
+
+# Xem logs chi tiết
+sudo journalctl -u allsite-hn -f
+
+# Kiểm tra port 5001
+sudo netstat -tlnp | grep 5001
+```
+
+### 4.5a. Truy cập Dashboard Web HN
+
+HN Service chạy Flask server trên port **5001**. Mở browser và truy cập:
+
+- **Dashboard chính**: `http://<server-ip>:5001/`
+- **Ban/Unban History**: `http://<server-ip>:5001/ban-history` 
+- **Detailed Logs**: `http://<server-ip>:5001/logs-detail`
+- **Status API**: `http://<server-ip>:5001/status` (JSON format)
+
+### 5a. Cấu hình FastNetMon để gọi HN script
+
+**Trên server HN**, cấu hình FastNetMon (file `/etc/fastnetmon/fastnetmon.conf`):
+
+```
+notify_script_path = /opt/RTBH-HN/Allsite-HN.py
+notify_script_format = json
+```
+
+### Kiểm tra cả 2 services cùng chạy
+
+```bash
+# Xem cả 2 services
+sudo systemctl status allsite-hcm allsite-hn
+
+# Xem logs song song
+sudo journalctl -u allsite-hcm -u allsite-hn -f
+
+# Xem ports
+sudo netstat -tlnp | grep 500
+```
+
+### So sánh HCM vs HN
+
+| Thành phần | HCM | HN |
+|-----------|-----|-----|
+| Service | Allsite-HCM_Service.py | Allsite-HN_Service.py |
+| Port | 5000 | 5001 |
+| Devices | QFXG8, EXDC4, QFXDC7, QFXJ23 | EXE1, EXV5 |
+| IP Ranges | HCM datacenter | FPT-HN, CMC-HN |
+| Database | allsite-hcm.db | allsite-hn.db |
+| Log | allsite-hcm.log | allsite-hn.log |
+| Script Wrapper | Allsite-HCM.py | Allsite-HN.py |
+| Directory | /opt/RTBH-HCM | /opt/RTBH-HN |
+
+---
